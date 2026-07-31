@@ -1,0 +1,24 @@
+# Secrets / local config — never commit
+.env
+.env.*
+!.env.example
+
+# Dependencies / build
+node_modules/
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+
+# Generated artifacts (safe to keep locally, not commit)
+generated/
+
+# Accumulated operational memory of the engineering layer.
+# Per-deployment state (like a local DB): it grows as the Software Engineer
+# agent refines code, and is read back on every run so work is incremental.
+# Commit it only if you want to seed/share the library across servers.
+memory/
+
+*.log
+.DS_Store
