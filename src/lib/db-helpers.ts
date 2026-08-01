@@ -70,19 +70,63 @@ async function writeJson(file: string, data: unknown) {
   }
 }
 
+/* ---------------------- file-store internals ---------------------- */
+
+async function createAnalysisFile(url: string, domain: string, provider?: string | null, model?: string | null): Promise<string> {
+  const id = fallbackId();
+  const now = new Date().toISOString();
+  await ensureDir(ANALYSES_DIR);
+  await writeJson(analysisFile(id), {
+    id, url, domain, status: "pending", provider: provider ?? null, model: model ?? null,
+    overallScore: null, report: null, error: null, createdAt: now, updatedAt: now,
+  } satisfies StoredAnalysis);
+  return id;
+}
+
+async function finishAnalysisFile(id: string, report: Report | null, status: "done" | "failed", error?: string): Promise<void> {
+  const existing = await readJson<StoredAnalysis>(analysisFile(id));
+  await ensureDir(ANALYSES_DIR);
+  await writeJson(analysisFile(id), {
+    ...(existing ?? { id, url: "", domain: "", provider: null, model: null, overallScore: null, createdAt: new Date().toISOString() }),
+    status,
+    report,
+    error: error ?? null,
+    overallScore: report?.scores?.overall ?? null,
+    updatedAt: new Date().toISOString(),
+  } satisfies StoredAnalysis);
+}
+
+async function getAnalysisFile(id: string): Promise<StoredAnalysis | null> {
+  return readJson<StoredAnalysis>(analysisFile(id));
+}
+
+async function listAnalysesFile(limit = 10) {
+  await ensureDir(ANALYSES_DIR);
+  let names: string[];
+  try {
+    names = await fs.readdir(ANALYSES_DIR);
+  } catch {
+    return [];
+  }
+  const rows: StoredAnalysis[] = [];
+  for (const n of names.filter((x) => x.endsWith(".json"))) {
+    const r = await readJson<StoredAnalysis>(path.join(ANALYSES_DIR, n));
+    if (r) rows.push(r);
+  }
+  rows.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  // createdAt is stored as an ISO string on disk; the DB path returns a real
+  // Date, so normalize to Date here to keep callers (e.g. .toISOString())
+  // working identically with or without a database.
+  return rows.slice(0, limit).map((r) => ({
+    id: r.id, url: r.url, domain: r.domain, status: r.status,
+    overallScore: r.overallScore, provider: r.provider, createdAt: new Date(r.createdAt),
+  }));
+}
+
 /* ------------------------------- analyses ------------------------- */
 
 export async function createAnalysis(url: string, domain: string, provider?: string, model?: string): Promise<string> {
-  if (NO_DB) {
-    const id = fallbackId();
-    const now = new Date().toISOString();
-    await ensureDir(ANALYSES_DIR);
-    await writeJson(analysisFile(id), {
-      id, url, domain, status: "pending", provider: provider ?? null, model: model ?? null,
-      overallScore: null, report: null, error: null, createdAt: now, updatedAt: now,
-    } satisfies StoredAnalysis);
-    return id;
-  }
+  if (NO_DB) return createAnalysisFile(url, domain, provider, model);
   try {
     const [row] = await db
       .insert(analyses)
@@ -90,67 +134,36 @@ export async function createAnalysis(url: string, domain: string, provider?: str
       .returning({ id: analyses.id });
     return row.id;
   } catch {
-    return fallbackId();
+    // DB unreachable/misconfigured → persist to the file store so an audit
+    // never gets an ID with no backing record (the pre-fix 404 bug).
+    return createAnalysisFile(url, domain, provider, model);
   }
 }
 
 export async function finishAnalysis(id: string, report: Report | null, status: "done" | "failed", error?: string): Promise<void> {
-  if (NO_DB) {
-    const existing = await readJson<StoredAnalysis>(analysisFile(id));
-    await ensureDir(ANALYSES_DIR);
-    await writeJson(analysisFile(id), {
-      ...(existing ?? { id, url: "", domain: "", provider: null, model: null, overallScore: null, createdAt: new Date().toISOString() }),
-      status,
-      report,
-      error: error ?? null,
-      overallScore: report?.scores?.overall ?? null,
-      updatedAt: new Date().toISOString(),
-    } satisfies StoredAnalysis);
-    return;
-  }
+  if (NO_DB) return finishAnalysisFile(id, report, status, error);
   try {
     await db
       .update(analyses)
       .set({ status, report, error: error ?? null, overallScore: report?.scores?.overall ?? null, updatedAt: new Date() })
       .where(eq(analyses.id, id));
   } catch {
-    /* noop */
+    await finishAnalysisFile(id, report, status, error);
   }
 }
 
 export async function getAnalysis(id: string) {
-  if (NO_DB) return readJson<StoredAnalysis>(analysisFile(id));
+  if (NO_DB) return getAnalysisFile(id);
   try {
     const rows = await db.select().from(analyses).where(eq(analyses.id, id)).limit(1);
     return rows[0] ?? null;
   } catch {
-    return null;
+    return getAnalysisFile(id);
   }
 }
 
 export async function listAnalyses(limit = 10) {
-  if (NO_DB) {
-    await ensureDir(ANALYSES_DIR);
-    let names: string[];
-    try {
-      names = await fs.readdir(ANALYSES_DIR);
-    } catch {
-      return [];
-    }
-    const rows: StoredAnalysis[] = [];
-    for (const n of names.filter((x) => x.endsWith(".json"))) {
-      const r = await readJson<StoredAnalysis>(path.join(ANALYSES_DIR, n));
-      if (r) rows.push(r);
-    }
-    rows.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-    // createdAt is stored as an ISO string on disk; the DB path returns a real
-    // Date, so normalize to Date here to keep callers (e.g. .toISOString())
-    // working identically with or without a database.
-    return rows.slice(0, limit).map((r) => ({
-      id: r.id, url: r.url, domain: r.domain, status: r.status,
-      overallScore: r.overallScore, provider: r.provider, createdAt: new Date(r.createdAt),
-    }));
-  }
+  if (NO_DB) return listAnalysesFile(limit);
   try {
     return await db
       .select({ id: analyses.id, url: analyses.url, domain: analyses.domain, status: analyses.status, overallScore: analyses.overallScore, provider: analyses.provider, createdAt: analyses.createdAt })
@@ -158,52 +171,55 @@ export async function listAnalyses(limit = 10) {
       .orderBy(desc(analyses.createdAt))
       .limit(limit);
   } catch {
-    return [];
+    return listAnalysesFile(limit);
   }
 }
 
 /* --------------------------- chat sessions ------------------------ */
 
-export async function getOrCreateChatSession(analysisId: string, provider: string, model: string) {
-  if (NO_DB) {
-    await ensureDir(CHATS_DIR);
-    let names: string[] = [];
-    try {
-      names = await fs.readdir(CHATS_DIR);
-    } catch {
-      names = [];
-    }
-    for (const n of names.filter((x) => x.endsWith(".json"))) {
-      const s = await readJson<StoredChatSession>(path.join(CHATS_DIR, n));
-      if (s && s.analysisId === analysisId) return { id: s.id, analysisId, provider: s.provider, model: s.model, messages: s.messages };
-    }
-    const id = fallbackId();
-    const now = new Date().toISOString();
-    const session: StoredChatSession = { id, analysisId, provider, model, messages: [], createdAt: now, updatedAt: now };
-    await writeJson(chatFile(id), session);
-    return { id, analysisId, provider, model, messages: [] };
+async function getOrCreateChatSessionFile(analysisId: string, provider: string, model: string) {
+  await ensureDir(CHATS_DIR);
+  let names: string[] = [];
+  try {
+    names = await fs.readdir(CHATS_DIR);
+  } catch {
+    names = [];
   }
+  for (const n of names.filter((x) => x.endsWith(".json"))) {
+    const s = await readJson<StoredChatSession>(path.join(CHATS_DIR, n));
+    if (s && s.analysisId === analysisId) return { id: s.id, analysisId, provider: s.provider, model: s.model, messages: s.messages };
+  }
+  const id = fallbackId();
+  const now = new Date().toISOString();
+  const session: StoredChatSession = { id, analysisId, provider, model, messages: [], createdAt: now, updatedAt: now };
+  await writeJson(chatFile(id), session);
+  return { id, analysisId, provider, model, messages: [] };
+}
+
+async function saveChatMessagesFile(sessionId: string, messages: { role: "user" | "assistant"; content: string }[]): Promise<void> {
+  const existing = await readJson<StoredChatSession>(chatFile(sessionId));
+  if (!existing) return;
+  await ensureDir(CHATS_DIR);
+  await writeJson(chatFile(sessionId), { ...existing, messages, updatedAt: new Date().toISOString() });
+}
+
+export async function getOrCreateChatSession(analysisId: string, provider: string, model: string) {
+  if (NO_DB) return getOrCreateChatSessionFile(analysisId, provider, model);
   try {
     const rows = await db.select().from(chatSessions).where(eq(chatSessions.analysisId, analysisId)).limit(1);
     if (rows[0]) return rows[0];
     const [created] = await db.insert(chatSessions).values({ analysisId, provider, model, messages: [] }).returning();
     return created;
   } catch {
-    return { id: fallbackId(), analysisId, provider, model, messages: [] as never[] };
+    return getOrCreateChatSessionFile(analysisId, provider, model);
   }
 }
 
 export async function saveChatMessages(sessionId: string, messages: { role: "user" | "assistant"; content: string }[]): Promise<void> {
-  if (NO_DB) {
-    const existing = await readJson<StoredChatSession>(chatFile(sessionId));
-    if (!existing) return;
-    await ensureDir(CHATS_DIR);
-    await writeJson(chatFile(sessionId), { ...existing, messages, updatedAt: new Date().toISOString() });
-    return;
-  }
+  if (NO_DB) return saveChatMessagesFile(sessionId, messages);
   try {
     await db.update(chatSessions).set({ messages: messages as never, updatedAt: new Date() }).where(eq(chatSessions.id, sessionId));
   } catch {
-    /* noop */
+    await saveChatMessagesFile(sessionId, messages);
   }
 }
