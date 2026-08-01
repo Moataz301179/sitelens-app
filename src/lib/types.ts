@@ -40,16 +40,17 @@ export interface ProviderCreds {
 export interface ProviderDef {
   id: string;
   label: string;
+  /** No embedded model presets — the full FREE model list is fetched live from OpenRouter. */
   models: string[];
   keyHint: string;
   docsUrl: string;
 }
 
+/** Sensible default when the user hasn't picked a model yet. */
+export const DEFAULT_OPENROUTER_MODEL = "openrouter/free";
+
 export const PROVIDERS: ProviderDef[] = [
-  { id: "openrouter", label: "OpenRouter", models: ["openai/gpt-4o-mini", "anthropic/claude-3.5-haiku", "google/gemini-2.0-flash-001", "meta-llama/llama-3.3-70b-instruct", "deepseek/deepseek-chat-v3-0324"], keyHint: "sk-or-v1-…", docsUrl: "https://openrouter.ai/keys" },
-  { id: "gemini", label: "Google Gemini", models: ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"], keyHint: "AIza…", docsUrl: "https://aistudio.google.com/apikey" },
-  { id: "zai", label: "Z.ai (GLM)", models: ["glm-4.5-flash", "glm-4.5-air", "glm-4-plus"], keyHint: "z.ai API key", docsUrl: "https://z.ai/manage-apikey/apikey-list" },
-  { id: "opencode", label: "OpenCode Zen", models: ["openai/gpt-5-nano", "zai-coding-plan/glm-4.7", "minimax/minimax-m2"], keyHint: "sk-… (Zen key)", docsUrl: "https://opencode.ai/zen" },
+  { id: "openrouter", label: "OpenRouter", models: [], keyHint: "sk-or-v1-…", docsUrl: "https://openrouter.ai/keys" },
 ];
 
 export interface AuditEvent {

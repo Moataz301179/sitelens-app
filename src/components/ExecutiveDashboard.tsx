@@ -6,7 +6,7 @@ import {
   Square, Target, TrendingUp, Users, Wrench, X,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { firstAvailableProvider, loadKeys } from "@/lib/keys";
+import { loadKeys } from "@/lib/keys";
 import { Button, Chip, Panel, Spinner, toast } from "./ui";
 
 /* ------------------------------------------------------------------ */
@@ -79,17 +79,13 @@ function execTone(s: string): "acc" | "mut" | "ok" | "warn" | "bad" {
 
 const DEFAULT_MODELS: Record<string, string> = {
   openrouter: "openai/gpt-4o-mini",
-  gemini: "gemini-2.5-flash",
-  zai: "glm-4.5-flash",
-  opencode: "openai/gpt-5-nano",
 };
 
 function creds(): { provider: string; model: string; apiKey: string } {
   const k = loadKeys();
-  const p = firstAvailableProvider(k) ?? "openrouter";
-  const apiKey = (k as unknown as Record<string, string>)[p] ?? "";
-  const model = k.model?.[p] || DEFAULT_MODELS[p] || "";
-  return { provider: p, model, apiKey };
+  const apiKey = k.openrouter ?? "";
+  const model = k.model?.openrouter || DEFAULT_MODELS.openrouter || "";
+  return { provider: "openrouter", model, apiKey };
 }
 
 function credHeaders(): Record<string, string> {

@@ -2,13 +2,14 @@
 
 import {
   AlertTriangle, ArrowUpRight, Bot, Bug, CheckCircle2, ChevronRight, ExternalLink,
-  FileWarning, LayoutTemplate, MessageSquare, PackageSearch, Search, ShieldAlert,
-  Sparkles, Star, Target, TerminalSquare, TrendingUp,
+  FileWarning, LayoutTemplate, MessageSquare, PackageSearch, Play, RefreshCw,
+  Search, Send, ShieldAlert, Sparkles, Star, Target, TerminalSquare, TrendingUp,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AGENTS } from "@/lib/agentMeta";
-import type { AgentSection, Finding, Report, Severity } from "@/lib/types";
+import type { AgentSection, AuditEvent, Finding, Report, Severity } from "@/lib/types";
 import ChatPanel from "./ChatPanel";
 import ConceptCard from "./ConceptPreview";
 import { Brand, Button, Chip, ClientTime, CopyButton, Panel, ScoreDial, SectionTitle, SevBadge, Spinner, Toaster, toast } from "./ui";
@@ -63,11 +64,16 @@ function FindingRow({ f, onFindTools }: { f: Finding; onFindTools: (q: string) =
 }
 
 export default function ReportView({ id, status, error, report, domain }: { id: string; status: string; error: string | null; report: Report | null; domain: string }) {
+  const router = useRouter();
   const [chatOpen, setChatOpen] = useState(false);
+  const [chatSeed, setChatSeed] = useState<string | null>(null);
   const [toolQuery, setToolQuery] = useState<string | null>(null);
   const [toolResults, setToolResults] = useState<GhRepo[] | null>(null);
   const [toolNote, setToolNote] = useState<string | null>(null);
   const [toolBusy, setToolBusy] = useState(false);
+  const [installing, setInstalling] = useState<string | null>(null);
+  const [installed, setInstalled] = useState<Set<string>>(new Set());
+  const [declined, setDeclined] = useState<Set<string>>(new Set());
   const toolsRef = useRef<HTMLDivElement>(null);
   const r = report;
   const allFindings = useMemo(() => (r ? r.agents.flatMap((a) => a.findings) : []), [r]);
@@ -96,6 +102,90 @@ export default function ReportView({ id, status, error, report, domain }: { id: 
 
   const onFindTools = (q: string) => { searchTools(q); toolsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); };
 
+  const openChat = (seed?: string | null) => {
+    setChatSeed(seed ?? null);
+    setChatOpen(true);
+  };
+
+  const quickAudit = async (targetUrl: string) => {
+    try {
+      const res = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: targetUrl }), // heuristic scan, no key needed
+      });
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error ?? `Quick audit failed (${res.status})`);
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let doneId: string | null = null;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() ?? "";
+        for (const part of parts) {
+          const line = part.trim();
+          if (!line.startsWith("data: ")) continue;
+          const evt = JSON.parse(line.slice(6)) as AuditEvent;
+          if (evt.type === "done" && evt.analysisId) doneId = evt.analysisId;
+        }
+      }
+      if (doneId) router.push(`/report/${doneId}`);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Quick audit failed.", "bad");
+    }
+  };
+
+  const deepDive = (a: AgentSection) => {
+    openChat(
+      `Deep-dive your "${a.name}" section for ${r?.domain ?? domain}. Walk me through your methodology, explain your ${a.findings.length} finding${a.findings.length === 1 ? "" : "s"}, and tell me the top 3 things to fix and exactly how.`
+    );
+  };
+
+  // Load previously declined tool repos so they stay hidden across visits.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("sitelens.declinedTools");
+      if (raw) setDeclined(new Set(JSON.parse(raw) as string[]));
+    } catch { /* noop */ }
+  }, []);
+
+  const installSkill = async (repo: GhRepo) => {
+    setInstalling(repo.name);
+    try {
+      const res = await fetch("/api/skills/install", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repoUrl: repo.url, name: repo.name }),
+      });
+      const data = (await res.json().catch(() => null)) as { ok?: boolean; error?: string; pluginName?: string; location?: string; skills?: { name: string }[] } | null;
+      if (!res.ok || !data?.ok) throw new Error(data?.error ?? "Install failed.");
+      setInstalled((s) => new Set(s).add(repo.name));
+      const skills = data.skills?.length ? data.skills.map((s) => s.name).join(", ") : "1 skill";
+      toast(`Installed ${data.pluginName} (${skills})`, "ok");
+      setToolNote(`Installed to ${data.location}. The agent runtime will auto-discover it on the next turn.`);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Install failed.", "bad");
+    } finally {
+      setInstalling(null);
+    }
+  };
+
+  const declineTool = (name: string) => {
+    setDeclined((prev) => {
+      const next = new Set(prev);
+      next.add(name);
+      try { localStorage.setItem("sitelens.declinedTools", JSON.stringify([...next])); } catch { /* noop */ }
+      return next;
+    });
+    toast(`Declined ${name} — hidden from this report`, "mut");
+  };
+
   if (!r || status === "failed") {
     return (
       <div className="min-h-screen"><Toaster /><header className="border-b border-line bg-bg/90 backdrop-blur"><div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3"><Link href="/" className="transition-opacity hover:opacity-85"><Brand /></Link></div></header>
@@ -114,13 +204,14 @@ export default function ReportView({ id, status, error, report, domain }: { id: 
   return (
     <div className="min-h-screen">
       <Toaster />
-      <ChatPanel analysisId={id} domain={r.domain} open={chatOpen} onClose={() => setChatOpen(false)} />
+      <ChatPanel analysisId={id} domain={r.domain} open={chatOpen} onClose={() => setChatOpen(false)} seed={chatSeed} onSeedConsumed={() => setChatSeed(null)} />
 
       <header className="sticky top-0 z-30 border-b border-line bg-bg/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
           <Link href="/" className="transition-opacity hover:opacity-85"><Brand /></Link>
           <div className="flex items-center gap-2">
-            <Button kind="outline" onClick={() => setChatOpen(true)} className="!py-1.5 text-[12.5px]"><Bot className="h-3.5 w-3.5" /> Copilot</Button>
+            <Button kind="outline" onClick={() => quickAudit(r.domain)} className="!py-1.5 text-[12.5px]"><RefreshCw className="h-3.5 w-3.5" /> Re-run</Button>
+            <Button kind="outline" onClick={() => openChat()} className="!py-1.5 text-[12.5px]"><Bot className="h-3.5 w-3.5" /> Copilot</Button>
             <a href="/" className="rounded-md border border-line2 bg-panel2 px-3.5 py-1.5 text-[12.5px] font-bold text-mut hover:text-ink">New audit</a>
           </div>
         </div>
@@ -252,7 +343,7 @@ export default function ReportView({ id, status, error, report, domain }: { id: 
         <section id="agents" className="scroll-mt-28 pt-12">
           <SectionTitle kicker="02 · Agent pipeline" title="What each expert concluded" />
           <div className="grid gap-3 lg:grid-cols-2">
-            {r.agents.filter((a) => a.id !== "prompts").map((a) => <AgentCard key={a.id} a={a} />)}
+            {r.agents.filter((a) => a.id !== "prompts").map((a) => <AgentCard key={a.id} a={a} onDeepDive={deepDive} />)}
           </div>
         </section>
 
@@ -302,7 +393,10 @@ export default function ReportView({ id, status, error, report, domain }: { id: 
                   </tr></thead>
                   <tbody>{r.competitors.map((c) => (
                     <tr key={c.name} className="border-b border-line last:border-0">
-                      <td className="px-4 py-3 font-bold text-ink">{c.url ? <a href={c.url} target="_blank" rel="noreferrer" className="hover:text-acc">{c.name}</a> : c.name}</td>
+                      <td className="px-4 py-3">
+                        <div className="font-bold text-ink">{c.url ? <a href={c.url} target="_blank" rel="noreferrer" className="hover:text-acc">{c.name}</a> : c.name}</div>
+                        {c.url && <button onClick={() => c.url && quickAudit(c.url)} className="mt-1 inline-flex items-center gap-1 text-[11px] font-bold text-acc hover:underline"><Play className="h-3 w-3" /> Audit this competitor</button>}
+                      </td>
                       <td className="px-4 py-3 text-mut">{c.positioning}</td>
                       <td className="hidden px-4 py-3 text-mut md:table-cell"><div>{c.overlap}</div><div className="mt-0.5 text-[11.5px] text-faint">Edge: {c.differentiation}</div></td>
                       <td className="px-4 py-3"><Chip tone={c.threat === "high" ? "bad" : c.threat === "medium" ? "warn" : "ok"}>{c.threat}</Chip></td>
@@ -324,7 +418,7 @@ export default function ReportView({ id, status, error, report, domain }: { id: 
         {/* Concepts */}
         <section id="concepts" className="scroll-mt-28 pt-12">
           <SectionTitle kicker="05 · Design optimization" title="Three redesign concepts, previewed" />
-          <div className="grid gap-4 lg:grid-cols-3">{r.concepts.map((c) => <ConceptCard key={c.id} c={c} brand={brand} tagline={tagline} domain={r.domain} />)}</div>
+          <div className="grid gap-4 lg:grid-cols-3">{r.concepts.map((c) => <ConceptCard key={c.id} c={c} brand={brand} tagline={tagline} domain={r.domain} onApply={(prompt) => openChat(prompt)} />)}</div>
         </section>
 
         {/* Prompts */}
@@ -338,7 +432,10 @@ export default function ReportView({ id, status, error, report, domain }: { id: 
                 <Panel key={p.id} className={`flex flex-col p-4 ${p.id === "mega" ? "border-acc/40 lg:col-span-2" : ""}`}>
                   <div className="flex items-start justify-between gap-3">
                     <div><div className="flex items-center gap-2">{p.id === "mega" && <TerminalSquare className="h-4 w-4 text-acc" />}<span className="text-[13.5px] font-bold text-ink">{p.title}</span></div><div className="font-data mt-1 text-[10.5px] uppercase tracking-wide text-faint">{p.target}</div></div>
-                    <CopyButton text={p.prompt} />
+                    <div className="flex items-center gap-2">
+                      <Button kind="outline" onClick={() => openChat(p.prompt)} className="!px-2.5 !py-1.5 text-[11.5px]"><Send className="h-3 w-3" /> Send to agent</Button>
+                      <CopyButton text={p.prompt} />
+                    </div>
                   </div>
                   <pre className="mt-3 max-h-52 flex-1 overflow-y-auto whitespace-pre-wrap rounded-md border border-line bg-bg px-3.5 py-3 font-data text-[11.5px] leading-relaxed text-mut">{p.prompt}</pre>
                 </Panel>
@@ -362,16 +459,32 @@ export default function ReportView({ id, status, error, report, domain }: { id: 
             : toolResults === null ? <Panel className="p-10 text-center text-[13px] text-mut"><PackageSearch className="mx-auto mb-2 h-5 w-5 text-faint" />{ghQueries.length ? "Loading recommended tools…" : "Search above."}</Panel>
             : toolResults.length === 0 ? <Panel className="p-10 text-center text-[13px] text-mut">{toolNote ?? "No repos matched."}</Panel>
             : <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                {toolResults.map((repo) => (
-                  <a key={repo.name} href={repo.url} target="_blank" rel="noreferrer" className="group rounded-lg border border-line bg-panel p-4 transition-colors hover:border-acc/40">
-                    <div className="flex items-center justify-between gap-2"><span className="flex items-center gap-2 font-data text-[12.5px] font-bold text-acc"><GhIcon className="h-3.5 w-3.5" /> {repo.name}</span><ArrowUpRight className="h-3.5 w-3.5 text-faint transition-colors group-hover:text-acc" /></div>
-                    <p className="mt-2 line-clamp-2 min-h-[32px] text-[12px] leading-snug text-mut">{repo.description || "No description."}</p>
-                    <div className="mt-3 flex items-center gap-3 font-data text-[10.5px] uppercase tracking-wide text-faint">
-                      <span className="inline-flex items-center gap-1"><Star className="h-3 w-3 text-warn" /> {repo.stars.toLocaleString()}</span>
-                      {repo.language && <span>{repo.language}</span>}
+                {toolResults.filter((repo) => !declined.has(repo.name)).map((repo) => {
+                  const isInstalled = installed.has(repo.name);
+                  return (
+                    <div key={repo.name} className="flex flex-col rounded-lg border border-line bg-panel p-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <a href={repo.url} target="_blank" rel="noreferrer" className="flex min-w-0 items-center gap-2 font-data text-[12.5px] font-bold text-acc hover:underline"><GhIcon className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">{repo.name}</span></a>
+                        <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-faint" />
+                      </div>
+                      <p className="mt-2 line-clamp-2 min-h-[32px] text-[12px] leading-snug text-mut">{repo.description || "No description."}</p>
+                      <div className="mt-3 flex items-center gap-3 font-data text-[10.5px] uppercase tracking-wide text-faint">
+                        <span className="inline-flex items-center gap-1"><Star className="h-3 w-3 text-warn" /> {repo.stars.toLocaleString()}</span>
+                        {repo.language && <span>{repo.language}</span>}
+                      </div>
+                      <div className="mt-auto flex items-center gap-2 border-t border-line pt-3">
+                        {isInstalled ? (
+                          <span className="inline-flex items-center gap-1.5 text-[11.5px] font-bold text-ok"><CheckCircle2 className="h-3.5 w-3.5" /> Installed</span>
+                        ) : (
+                          <Button kind="outline" onClick={() => installSkill(repo)} disabled={installing === repo.name} className="!px-2.5 !py-1.5 text-[11.5px]">
+                            {installing === repo.name ? <Spinner className="h-3 w-3" /> : <PackageSearch className="h-3 w-3" />} Install skill
+                          </Button>
+                        )}
+                        <button onClick={() => declineTool(repo.name)} className="rounded border border-line2 bg-panel2 px-2.5 py-1.5 text-[11.5px] font-bold text-mut transition-colors hover:border-bad/40 hover:text-bad">Decline</button>
+                      </div>
                     </div>
-                  </a>
-                ))}</div>}
+                  );
+                })}</div>}
         </section>
 
         <section className="mt-16">
@@ -388,7 +501,7 @@ export default function ReportView({ id, status, error, report, domain }: { id: 
   );
 }
 
-function AgentCard({ a }: { a: AgentSection }) {
+function AgentCard({ a, onDeepDive }: { a: AgentSection; onDeepDive?: (a: AgentSection) => void }) {
   const meta = AGENTS.find((x) => x.id === a.id);
   const icon = a.id === "market" ? <TrendingUp className="h-4 w-4" /> : a.id === "idea" ? <Target className="h-4 w-4" /> : a.id === "business" ? <TerminalSquare className="h-4 w-4" /> : a.id === "gaps" ? <Search className="h-4 w-4" /> : a.id === "ux" ? <LayoutTemplate className="h-4 w-4" /> : a.id === "compliance" ? <FileWarning className="h-4 w-4" /> : a.id === "security" ? <ShieldAlert className="h-4 w-4" /> : a.id === "qa" ? <Bug className="h-4 w-4" /> : <RadarIcon />;
   return (
@@ -405,7 +518,12 @@ function AgentCard({ a }: { a: AgentSection }) {
       {a.insights.length > 0 && <ul className="mt-3.5 space-y-1.5 border-t border-line pt-3">{a.insights.slice(0, 5).map((ins) => (
         <li key={ins} className="flex gap-2 text-[12px] leading-snug text-ink/80"><span className="mt-[5px] h-1 w-1 shrink-0 rounded-full bg-acc" />{ins}</li>
       ))}</ul>}
-      {a.findings.length > 0 && <div className="mt-3 border-t border-line pt-3"><a href="#findings" className="inline-flex items-center gap-1 text-[12px] font-bold text-acc hover:underline">{a.findings.length} finding{a.findings.length > 1 ? "s" : ""} <ChevronRight className="h-3 w-3" /></a></div>}
+      <div className="mt-3 flex items-center justify-between gap-2 border-t border-line pt-3">
+        {a.findings.length > 0
+          ? <a href="#findings" className="inline-flex items-center gap-1 text-[12px] font-bold text-acc hover:underline">{a.findings.length} finding{a.findings.length > 1 ? "s" : ""} <ChevronRight className="h-3 w-3" /></a>
+          : <span className="text-[11.5px] text-faint">No findings flagged</span>}
+        <button onClick={() => onDeepDive?.(a)} className="inline-flex items-center gap-1.5 rounded-md border border-line2 bg-panel2 px-2.5 py-1.5 text-[11.5px] font-bold text-ink transition-colors hover:border-acc/50 hover:text-acc"><Play className="h-3 w-3" /> Deep dive</button>
+      </div>
     </Panel>
   );
 }

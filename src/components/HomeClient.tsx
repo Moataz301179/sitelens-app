@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { AGENTS } from "@/lib/agentMeta";
 import { EMPTY_KEYS, firstAvailableProvider, loadKeys, saveKeys } from "@/lib/keys";
-import { PROVIDERS, type AgentId, type AuditEvent } from "@/lib/types";
+import { PROVIDERS, DEFAULT_OPENROUTER_MODEL, type AgentId, type AuditEvent } from "@/lib/types";
 import KeysModal from "./KeysModal";
+import ModelPicker from "./ModelPicker";
 import ApplyFixesButton from "./ApplyFixesButton";
 import ExecutiveDashboard from "./ExecutiveDashboard";
 import { Brand, Button, Chip, ClientTime, KeyPill, Panel, Spinner, Toaster, toast } from "./ui";
@@ -51,11 +52,10 @@ export default function HomeClient({ initialRecent }: { initialRecent: RecentRow
   }, []);
 
   useEffect(() => {
-    const def = PROVIDERS.find((p) => p.id === provider);
-    // Preserve any saved model (including custom ids outside the preset list);
-    // only default to the first preset when nothing has been chosen for this provider yet.
-    setModel(keys.model?.[provider] || def?.models[0] || "");
-  }, [provider, keys.model]);
+    // OpenRouter is the only provider now. Preserve any saved custom model id;
+    // default to the router's free endpoint when nothing has been chosen yet.
+    setModel(keys.model?.openrouter || DEFAULT_OPENROUTER_MODEL);
+  }, [keys.model]);
 
   const refreshRecent = async () => {
     try {
@@ -66,11 +66,10 @@ export default function HomeClient({ initialRecent }: { initialRecent: RecentRow
     }
   };
 
-  // Persist the chosen model per provider so custom ids survive reloads and
-  // switching providers never leaks one provider's model into another.
+  // Persist the chosen model so custom ids survive reloads.
   const changeModel = (m: string) => {
     setModel(m);
-    saveKeys({ ...keys, model: { ...keys.model, [provider]: m } });
+    saveKeys({ ...keys, model: { ...keys.model, openrouter: m } });
   };
 
   const startScan = async () => {
@@ -80,10 +79,10 @@ export default function HomeClient({ initialRecent }: { initialRecent: RecentRow
       return;
     }
     const useAi = provider !== "heuristic";
-    const apiKey = useAi ? keys[provider as keyof typeof keys] : "";
+    const apiKey = useAi ? keys.openrouter : "";
     if (useAi && !apiKey) {
       setKeysOpen(true);
-      toast(`No ${PROVIDERS.find((p) => p.id === provider)?.label} key saved yet`, "bad");
+      toast("No OpenRouter key saved yet", "bad");
       return;
     }
 
@@ -240,23 +239,7 @@ export default function HomeClient({ initialRecent }: { initialRecent: RecentRow
                   })}
                 </div>
                 {activeProvider && provider !== "heuristic" && (
-                  <>
-                    <input
-                      list={`model-suggestions-${provider}`}
-                      value={model}
-                      onChange={(e) => changeModel(e.target.value)}
-                      placeholder={activeProvider.models[0]}
-                      title="Model id — presets are suggestions, type any model"
-                      className="w-52 rounded-md border border-line2 bg-bg px-2 py-1 font-data text-[11.5px] text-ink placeholder:text-faint focus:border-acc/60 focus:outline-none"
-                      spellCheck={false}
-                      autoComplete="off"
-                    />
-                    <datalist id={`model-suggestions-${provider}`}>
-                      {activeProvider.models.map((m) => (
-                        <option key={m} value={m} />
-                      ))}
-                    </datalist>
-                  </>
+                  <ModelPicker compact value={model} onChange={changeModel} placeholder="Pick a free model…" />
                 )}
               </div>
 

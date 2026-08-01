@@ -20,5 +20,9 @@ generated/
 # Commit it only if you want to seed/share the library across servers.
 memory/
 
+# User-installed agent skills (git-cloned via the app's tool finder).
+# Local runtime state — each machine installs its own set.
+.zcode/cli/plugins/
+
 *.log
 .DS_Store

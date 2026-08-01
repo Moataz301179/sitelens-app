@@ -1,5 +1,6 @@
 "use client";
 
+import { Sparkles } from "lucide-react";
 import type { DesignConcept } from "@/lib/types";
 import { CopyButton } from "./ui";
 
@@ -113,7 +114,7 @@ function MiniHero({ c, brand, tagline, domain }: { c: DesignConcept; brand: stri
   );
 }
 
-export default function ConceptCard({ c, brand, tagline, domain }: { c: DesignConcept; brand: string; tagline: string; domain: string }) {
+export default function ConceptCard({ c, brand, tagline, domain, onApply }: { c: DesignConcept; brand: string; tagline: string; domain: string; onApply?: (prompt: string) => void }) {
   const designPrompt = `Redesign the homepage of "${domain}" in the "${c.name}" direction.\nPalette: background ${c.palette.bg}, surface ${c.palette.surface}, text ${c.palette.text}, accent ${c.palette.accent}.\nDirection: ${c.rationale}\nApply these changes:\n${c.changes.map((x) => `- ${x}`).join("\n")}\nKeep all existing content and functionality; output production HTML/CSS.`;
   return (
     <div className="flex flex-col rounded-lg border border-line bg-panel">
@@ -142,6 +143,15 @@ export default function ConceptCard({ c, brand, tagline, domain }: { c: DesignCo
             </li>
           ))}
         </ul>
+      </div>
+      <div className="border-t border-line px-4 py-3">
+        <button
+          onClick={() => onApply?.(designPrompt)}
+          className="inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-acc px-3 py-2 text-[12px] font-bold text-acctext transition-colors hover:bg-accdeep disabled:opacity-50"
+          disabled={!onApply}
+        >
+          <Sparkles className="h-3.5 w-3.5" /> Apply with copilot
+        </button>
       </div>
     </div>
   );

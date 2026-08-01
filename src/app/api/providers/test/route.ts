@@ -1,5 +1,5 @@
 import { complete } from "@/lib/llm";
-import { PROVIDERS } from "@/lib/types";
+import { DEFAULT_OPENROUTER_MODEL } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,10 +24,9 @@ export async function POST(req: Request) {
   if (!provider) return Response.json({ ok: false, error: "Missing provider." }, { status: 400 });
   if (!apiKey) return Response.json({ ok: false, error: "Enter an API key first." }, { status: 400 });
 
-  // Fall back to the provider's first preset when the model field is empty,
+  // Fall back to the free router endpoint when the model field is empty,
   // so the "test connection" action always has a concrete model to try.
-  const fallbackModel = PROVIDERS.find((p) => p.id === provider)?.models[0] ?? "";
-  const modelToUse = model || fallbackModel;
+  const modelToUse = model || DEFAULT_OPENROUTER_MODEL;
   if (!modelToUse) return Response.json({ ok: false, error: "Enter a model name first (e.g. openai/gpt-4o-mini)." }, { status: 400 });
 
   try {

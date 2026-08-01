@@ -39,64 +39,25 @@ function openAiLike(endpoint: string, headers: Record<string, string>) {
   };
 }
 
-async function gemini(opts: CompletionOpts): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(opts.model)}:generateContent?key=${encodeURIComponent(opts.apiKey)}`;
-  const system = opts.messages.filter((m) => m.role === "system").map((m) => m.content).join("\n");
-  const contents = opts.messages
-    .filter((m) => m.role !== "system")
-    .map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] }));
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      systemInstruction: system ? { parts: [{ text: system }] } : undefined,
-      contents,
-      generationConfig: {
-        temperature: opts.temperature ?? 0.4,
-        maxOutputTokens: opts.maxTokens ?? 1200,
-        ...(opts.json ? { responseMimeType: "application/json" } : {}),
-      },
-    }),
-  });
-  const body = (await res.json().catch(() => null)) as {
-    candidates?: { content?: { parts?: { text?: string }[] } }[];
-    error?: { message?: string };
-  } | null;
-  if (!res.ok) {
-    throw new Error(body?.error?.message || `Gemini returned ${res.status} — check the API key and model name.`);
-  }
-  return body?.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
-}
+const OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 
 const PROVIDER_FN: Record<string, (opts: CompletionOpts) => Promise<string>> = {
-  openrouter: openAiLike("https://openrouter.ai/api/v1/chat/completions", {
+  openrouter: openAiLike(OPENROUTER_ENDPOINT, {
     Authorization: "", // filled per call
     "HTTP-Referer": "https://sitelens.app",
     "X-Title": "SiteLens",
   }),
-  zai: openAiLike("https://api.z.ai/api/paas/v4/chat/completions", { Authorization: "" }),
-  opencode: openAiLike("https://opencode.ai/zen/v1/chat/completions", { Authorization: "" }),
-  gemini,
 };
 
 export async function complete(opts: CompletionOpts): Promise<string> {
   if (!opts.apiKey) throw new Error("No API key provided for " + opts.provider);
-  const fn = PROVIDER_FN[opts.provider];
-  if (!fn) throw new Error(`Unknown provider "${opts.provider}". Supported: OpenRouter, Gemini, Z.ai, OpenCode.`);
-  // openAiLike closures carry an empty Authorization; wrap to inject the bearer token.
-  if (opts.provider === "openrouter" || opts.provider === "zai" || opts.provider === "opencode") {
-    const endpoint =
-      opts.provider === "openrouter"
-        ? "https://openrouter.ai/api/v1/chat/completions"
-        : opts.provider === "zai"
-          ? "https://api.z.ai/api/paas/v4/chat/completions"
-          : "https://opencode.ai/zen/v1/chat/completions";
-    return openAiLike(endpoint, {
-      Authorization: `Bearer ${opts.apiKey}`,
-      ...(opts.provider === "openrouter" ? { "HTTP-Referer": "https://sitelens.app", "X-Title": "SiteLens" } : {}),
-    })(opts);
-  }
-  return fn(opts);
+  if (opts.provider !== "openrouter") throw new Error(`Unsupported provider "${opts.provider}". Only OpenRouter is supported.`);
+  // openAiLike carries an empty Authorization; inject the bearer token per call.
+  return openAiLike(OPENROUTER_ENDPOINT, {
+    Authorization: `Bearer ${opts.apiKey}`,
+    "HTTP-Referer": "https://sitelens.app",
+    "X-Title": "SiteLens",
+  })(opts);
 }
 
 export function extractJson(raw: string): Record<string, unknown> | null {
