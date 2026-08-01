@@ -60,12 +60,15 @@ export function computeScoresWithLighthouse(s: SiteSignals, lh: PageSpeedResult,
 
 /* ─── Heuristic findings ───────────────────────────────────────── */
 
-function add(findings: Finding[], n: number, agent: Finding["agent"], severity: Finding["severity"], title: string, detail: string, fix: string, ghQuery?: string) {
-  const f: Finding = { id: `f${++n}`, agent, severity, title, detail, fix };
+function add(findings: Finding[], _n: number, agent: Finding["agent"], severity: Finding["severity"], title: string, detail: string, fix: string, ghQuery?: string) {
+  // id derives from findings.length (monotonic within the call) rather than the
+  // passed-in counter `_n`, which callers never capture — the old `f${++n}` gave
+  // every finding added in the same section the SAME id (duplicate React keys).
+  const f: Finding = { id: `f${findings.length}`, agent, severity, title, detail, fix };
   if (severity !== "pass" && ghQuery) f.ghQuery = ghQuery;
   if (severity !== "pass") f.prompt = buildCorrectivePrompt(f, "");
   findings.push(f);
-  return n;
+  return findings.length;
 }
 
 export function HEURISTIC_FINDINGS(s: SiteSignals): Finding[] {

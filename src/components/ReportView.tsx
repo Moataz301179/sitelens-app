@@ -267,14 +267,14 @@ export default function ReportView({ id, status, error, report, domain }: { id: 
           {actionable.length === 0 ? (
             <Panel className="p-8 text-center text-[13.5px] text-mut">No defects found.</Panel>
           ) : (
-            <div className="space-y-2">{actionable.map((f) => <FindingRow key={f.id} f={f} onFindTools={onFindTools} />)}</div>
+            <div className="space-y-2">{actionable.map((f, i) => <FindingRow key={`${f.agent}:${f.id}:${i}`} f={f} onFindTools={onFindTools} />)}</div>
           )}
           {passes.length > 0 && (
             <details className="mt-4 rounded-md border border-line bg-panel">
               <summary className="cursor-pointer px-4 py-3 text-[13px] font-bold text-mut">{passes.length} checks passing — view</summary>
               <div className="space-y-1.5 border-t border-line px-4 py-3.5">
-                {passes.map((p) => (
-                  <div key={p.id} className="flex items-start gap-2.5 text-[12.5px] text-mut">
+                {passes.map((p, i) => (
+                  <div key={`${p.agent}:${p.id}:${i}`} className="flex items-start gap-2.5 text-[12.5px] text-mut">
                     <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ok" />
                     <span><span className="font-bold text-ink">{p.title}.</span> {p.detail}</span>
                   </div>
