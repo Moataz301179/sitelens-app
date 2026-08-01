@@ -8,6 +8,7 @@ import { EMPTY_KEYS, firstAvailableProvider, loadKeys, saveKeys } from "@/lib/ke
 import { PROVIDERS, type AgentId, type AuditEvent } from "@/lib/types";
 import KeysModal from "./KeysModal";
 import ApplyFixesButton from "./ApplyFixesButton";
+import ExecutiveDashboard from "./ExecutiveDashboard";
 import { Brand, Button, Chip, ClientTime, KeyPill, Panel, Spinner, Toaster, toast } from "./ui";
 
 interface RecentRow {
@@ -319,16 +320,19 @@ export default function HomeClient({ initialRecent }: { initialRecent: RecentRow
             ))}
           </section>
 
-          {/* recent scans */}
+          {/* autonomous executive team */}
           <section className="mt-14">
             <div className="mb-4">
               <h2 className="font-display text-lg font-bold tracking-tight">Autonomous executive team</h2>
               <p className="mt-1 text-[12.5px] text-mut">
-                Turn audits into action — the Software Engineer agent refines code and records each fix in a growing
-                library so the team never re-scans from scratch.
+                A self-running crew of AI executives — CEO, CFO, CTO, COO, CMO, CRO, CIO + the SWE engineer — analyzes
+                every audit, makes decisions, executes and measures the real effect. See the team and its live output below.
               </p>
             </div>
-            <ApplyFixesButton defaultUrl={url} />
+            <ExecutiveDashboard />
+            <div className="mt-6">
+              <ApplyFixesButton defaultUrl={url} />
+            </div>
           </section>
 
           <section className="mt-14">
