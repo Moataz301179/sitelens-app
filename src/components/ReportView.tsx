@@ -11,7 +11,7 @@ import { AGENTS } from "@/lib/agentMeta";
 import type { AgentSection, Finding, Report, Severity } from "@/lib/types";
 import ChatPanel from "./ChatPanel";
 import ConceptCard from "./ConceptPreview";
-import { Brand, Button, Chip, CopyButton, Panel, ScoreDial, SectionTitle, SevBadge, Spinner, Toaster, toast } from "./ui";
+import { Brand, Button, Chip, ClientTime, CopyButton, Panel, ScoreDial, SectionTitle, SevBadge, Spinner, Toaster, toast } from "./ui";
 
 interface GhRepo {
   name: string; url: string; description: string; stars: number; language: string | null; topics: string[];
@@ -130,7 +130,7 @@ export default function ReportView({ id, status, error, report, domain }: { id: 
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-line py-6">
           <div>
-            <div className="font-data text-[11px] uppercase tracking-[0.16em] text-acc">Audit report · {new Date(r.fetchedAt).toLocaleString()}</div>
+            <div className="font-data text-[11px] uppercase tracking-[0.16em] text-acc">Audit report · <ClientTime date={r.fetchedAt} full /></div>
             <h1 className="font-display mt-1.5 text-2xl font-bold tracking-tight sm:text-3xl">{r.domain}</h1>
             <div className="mt-2.5 flex flex-wrap items-center gap-2">
               <a href={r.finalUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[12.5px] font-semibold text-mut hover:text-acc">{r.finalUrl} <ExternalLink className="h-3 w-3" /></a>

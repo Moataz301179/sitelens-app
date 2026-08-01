@@ -2,7 +2,7 @@
 
 import { ArrowUp, Bot, MessageSquare, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { firstAvailableProvider, loadKeys } from "@/lib/keys";
+import { EMPTY_KEYS, firstAvailableProvider, loadKeys, type KeyStore } from "@/lib/keys";
 import { PROVIDERS } from "@/lib/types";
 import { Button, Spinner, toast } from "./ui";
 
@@ -20,14 +20,23 @@ const SUGGESTIONS = [
 ];
 
 export default function ChatPanel({ analysisId, domain, open, onClose }: { analysisId: string; domain: string; open: boolean; onClose: () => void }) {
-  const keys = loadKeys();
-  const [provider, setProvider] = useState<string>(firstAvailableProvider(keys) ?? "openrouter");
-  const [model, setModel] = useState<string>(PROVIDERS.find((p) => p.id === firstAvailableProvider(keys))?.models[0] ?? PROVIDERS[0].models[0]);
+  const [keys, setKeys] = useState<KeyStore>(EMPTY_KEYS);
+  const [provider, setProvider] = useState<string>("openrouter");
+  const [model, setModel] = useState<string>(PROVIDERS[0].models[0]);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+
+  // Load keys only on the client (after mount) to avoid SSR/client hydration mismatches.
+  useEffect(() => {
+    const k = loadKeys();
+    setKeys(k);
+    const first = firstAvailableProvider(k) ?? "openrouter";
+    setProvider(first);
+    setModel(PROVIDERS.find((p) => p.id === first)?.models[0] ?? PROVIDERS[0].models[0]);
+  }, []);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });

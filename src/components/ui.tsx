@@ -103,6 +103,19 @@ export function Spinner({ className = "h-4 w-4" }: { className?: string }) {
   return <Loader2 className={`animate-spin-slow ${className}`} />;
 }
 
+/* ---------- hydration-safe time ---------- */
+
+/** Renders a localized timestamp only on the client (after mount) so the SSR HTML
+ *  never contains locale/timezone-dependent text that would mismatch on hydration. */
+export function ClientTime({ date, full, className }: { date: string; full?: boolean; className?: string }) {
+  const [text, setText] = useState("");
+  useEffect(() => {
+    const d = new Date(date);
+    setText(full ? d.toLocaleString() : d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }));
+  }, [date, full]);
+  return <span className={className}>{text}</span>;
+}
+
 /* ---------- copy ---------- */
 
 export function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) {

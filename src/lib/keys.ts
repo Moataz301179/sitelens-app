@@ -9,16 +9,16 @@ export interface KeyStore {
 
 const LS_KEY = "sitelens.keys.v1";
 
-const EMPTY: KeyStore = { openrouter: "", gemini: "", zai: "", opencode: "", model: {} };
+export const EMPTY_KEYS: KeyStore = { openrouter: "", gemini: "", zai: "", opencode: "", model: {} };
 
 export function loadKeys(): KeyStore {
-  if (typeof window === "undefined") return { ...EMPTY };
+  if (typeof window === "undefined") return { ...EMPTY_KEYS };
   try {
     const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return { ...EMPTY };
-    return { ...EMPTY, ...(JSON.parse(raw) as Partial<KeyStore>) };
+    if (!raw) return { ...EMPTY_KEYS };
+    return { ...EMPTY_KEYS, ...(JSON.parse(raw) as Partial<KeyStore>) };
   } catch {
-    return { ...EMPTY };
+    return { ...EMPTY_KEYS };
   }
 }
 

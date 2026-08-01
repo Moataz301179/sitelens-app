@@ -4,11 +4,11 @@ import { ArrowRight, ExternalLink, Globe, KeyRound, Radar, Settings2, ShieldChec
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { AGENTS } from "@/lib/agentMeta";
-import { firstAvailableProvider, loadKeys, saveKeys } from "@/lib/keys";
+import { EMPTY_KEYS, firstAvailableProvider, loadKeys, saveKeys } from "@/lib/keys";
 import { PROVIDERS, type AgentId, type AuditEvent } from "@/lib/types";
 import KeysModal from "./KeysModal";
 import ApplyFixesButton from "./ApplyFixesButton";
-import { Brand, Button, Chip, KeyPill, Panel, Spinner, Toaster, toast } from "./ui";
+import { Brand, Button, Chip, ClientTime, KeyPill, Panel, Spinner, Toaster, toast } from "./ui";
 
 interface RecentRow {
   id: string;
@@ -25,7 +25,7 @@ type AgentStatus = "pending" | "running" | "done";
 export default function HomeClient({ initialRecent }: { initialRecent: RecentRow[] }) {
   const router = useRouter();
   const [url, setUrl] = useState("");
-  const [keys, setKeys] = useState(loadKeys);
+  const [keys, setKeys] = useState(EMPTY_KEYS);
   const [provider, setProvider] = useState<string>("heuristic");
   const [model, setModel] = useState<string>("");
   const [keysOpen, setKeysOpen] = useState(false);
@@ -375,7 +375,7 @@ export default function HomeClient({ initialRecent }: { initialRecent: RecentRow
                           <Chip tone={r.provider ? "acc" : "mut"}>{r.provider ?? "heuristics"}</Chip>
                         </td>
                         <td className="font-data hidden px-4 py-3 text-[11.5px] text-mut md:table-cell">
-                          {new Date(r.createdAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                          <ClientTime date={r.createdAt} />
                         </td>
                         <td className="px-4 py-3 text-right">
                           {r.status === "failed" ? (
