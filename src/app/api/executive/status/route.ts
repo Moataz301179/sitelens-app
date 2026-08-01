@@ -1,4 +1,5 @@
 import { engine } from "@/lib/executive-team/autonomy/engine";
+import { setRuntimeLLM } from "@/lib/executive-team/shared/runtime-key";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,10 +15,17 @@ export async function GET() {
 
 export async function POST(req: Request) {
   let action = "tick";
+  let creds: { provider?: string; model?: string; apiKey?: string } = {};
   try {
     const body = await req.json();
     action = body?.action ?? "tick";
+    creds = body ?? {};
   } catch { /* default tick */ }
+
+  // Use the browser-entered key so the crew runs with the user's key (zero server config).
+  if (creds.apiKey) {
+    setRuntimeLLM({ provider: creds.provider ?? "", model: creds.model ?? "", apiKey: creds.apiKey });
+  }
 
   switch (action) {
     case "start":

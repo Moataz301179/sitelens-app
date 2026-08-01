@@ -1,5 +1,6 @@
 import { engine } from "@/lib/executive-team/autonomy/engine";
 import { executiveState } from "@/lib/executive-team/shared/executive-state";
+import { setRuntimeLLM } from "@/lib/executive-team/shared/runtime-key";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,7 +22,16 @@ const CREW_META: { role: string; label: string; domain: string; blurb: string }[
   { role: "swe", label: "SWE", domain: "Engineering", blurb: "Turns approved decisions into code via GitHub PRs." },
 ];
 
-export async function GET() {
+export async function GET(req: Request) {
+  // Accept the browser-entered key (zero server config) so any engine auto-run uses it.
+  const apiKey = req.headers.get("x-api-key");
+  if (apiKey) {
+    setRuntimeLLM({
+      provider: req.headers.get("x-api-provider") ?? "",
+      model: req.headers.get("x-api-model") ?? "",
+      apiKey,
+    });
+  }
   engine.maybeAutoStart();
   const decisions = executiveState.getDecisions();
   const insights = executiveState.getInsights();

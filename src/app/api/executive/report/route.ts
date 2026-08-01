@@ -1,5 +1,6 @@
 import { engine } from "@/lib/executive-team/autonomy/engine";
 import { buildExecutiveContext } from "@/lib/executive-team/shared/context-factory";
+import { setRuntimeLLM } from "@/lib/executive-team/shared/runtime-key";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,7 +10,16 @@ export const dynamic = "force-dynamic";
  * This is the user's explicit "daily report of performance, issues, enhancements,
  * results, effects measurement". It also writes a Markdown copy to /generated.
  */
-export async function GET() {
+export async function GET(req: Request) {
+  // Use the browser-entered key if provided (zero server config).
+  const apiKey = req.headers.get("x-api-key");
+  if (apiKey) {
+    setRuntimeLLM({
+      provider: req.headers.get("x-api-provider") ?? "",
+      model: req.headers.get("x-api-model") ?? "",
+      apiKey,
+    });
+  }
   try {
     const report = await engine.emitDailyReport();
     return Response.json(report);

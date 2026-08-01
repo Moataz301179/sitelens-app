@@ -6,6 +6,7 @@ import {
   Square, Target, TrendingUp, Users, Wrench, X,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { firstAvailableProvider, loadKeys } from "@/lib/keys";
 import { Button, Chip, Panel, Spinner, toast } from "./ui";
 
 /* ------------------------------------------------------------------ */
@@ -71,6 +72,35 @@ function execTone(s: string): "acc" | "mut" | "ok" | "warn" | "bad" {
 /* Small presentational helpers                                        */
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ */
+/* Browser key → exec engine: send the user's key so the crew works    */
+/* with zero server config (mirrors how audits get their key).         */
+/* ------------------------------------------------------------------ */
+
+const DEFAULT_MODELS: Record<string, string> = {
+  openrouter: "openai/gpt-4o-mini",
+  gemini: "gemini-2.5-flash",
+  zai: "glm-4.5-flash",
+  opencode: "openai/gpt-5-nano",
+};
+
+function creds(): { provider: string; model: string; apiKey: string } {
+  const k = loadKeys();
+  const p = firstAvailableProvider(k) ?? "openrouter";
+  const apiKey = (k as unknown as Record<string, string>)[p] ?? "";
+  const model = k.model?.[p] || DEFAULT_MODELS[p] || "";
+  return { provider: p, model, apiKey };
+}
+
+function credHeaders(): Record<string, string> {
+  const c = creds();
+  const h: Record<string, string> = {};
+  if (c.apiKey) h["x-api-key"] = c.apiKey;
+  if (c.provider) h["x-api-provider"] = c.provider;
+  if (c.model) h["x-api-model"] = c.model;
+  return h;
+}
+
 const STAT_TONE: Record<string, string> = { acc: "text-acc", ok: "text-ok", bad: "text-bad", warn: "text-warn" };
 
 function Stat({ label, value, hint, tone }: { label: string; value: string | number; hint?: string; tone?: string }) {
@@ -101,7 +131,7 @@ export default function ExecutiveDashboard() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/executive/dashboard");
+      const res = await fetch("/api/executive/dashboard", { headers: credHeaders() });
       if (res.ok) setData(await res.json());
     } catch {
       /* noop */
@@ -118,7 +148,7 @@ export default function ExecutiveDashboard() {
       const res = await fetch("/api/executive/status", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "tick" }),
+        body: JSON.stringify({ action: "tick", ...creds() }),
       });
       const r = await res.json().catch(() => null);
       if (r?.ok) toast(`Crew run done — ${r.decisions ?? 0} decisions approved, ${r.insights ?? 0} insights`, "ok");
@@ -137,7 +167,7 @@ export default function ExecutiveDashboard() {
       const res = await fetch("/api/executive/status", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, ...creds() }),
       });
       const r = await res.json().catch(() => null);
       toast(r?.ok ? (action === "start" ? "Engine started" : "Engine stopped") : "Engine action failed", r?.ok ? "ok" : "bad");
@@ -154,7 +184,7 @@ export default function ExecutiveDashboard() {
     if (report) return;
     setReportBusy(true);
     try {
-      const res = await fetch("/api/executive/report");
+      const res = await fetch("/api/executive/report", { headers: credHeaders() });
       const r = await res.json().catch(() => null);
       if (res.ok && r) setReport(r);
       else toast("Daily report unavailable", "bad");

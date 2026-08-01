@@ -24,6 +24,7 @@ import {
   MemoryUpdate,
 } from './types';
 import { executiveState } from './executive-state';
+import { getRuntimeLLM } from './runtime-key';
 
 export abstract class BaseExecutiveAgent {
   protected role: ExecutiveRole;
@@ -170,10 +171,13 @@ CURRENT CONTEXT:
 
 DECISION HISTORY: ${JSON.stringify(this.decisionHistory.slice(-5), null, 2)}`;
 
+    // Runtime override (the browser-entered key sent by the dashboard) takes
+    // precedence; otherwise fall back to server env config, then heuristic mode.
+    const rt = getRuntimeLLM();
     return complete({
-      provider: 'openrouter',
-      model: 'openai/gpt-4o-mini',
-      apiKey: process.env.OPENROUTER_API_KEY || '',
+      provider: rt.provider || 'openrouter',
+      model: rt.model || process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini',
+      apiKey: rt.apiKey || process.env.OPENROUTER_API_KEY || '',
       messages: [
         { role: 'system', content: enhancedSystemPrompt },
         { role: 'user', content: userPrompt },
