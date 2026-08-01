@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { BookOpen, ExternalLink, GitPullRequest, Wrench, CircleAlert, CheckCircle2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { BookOpen, ExternalLink, GitPullRequest, Wrench, CircleAlert, CheckCircle2, GitBranch, KeyRound } from "lucide-react";
 import { Button, Panel, Spinner } from "./ui";
 
 interface ApplyResult {
@@ -31,6 +31,41 @@ export default function ApplyFixesButton({ defaultUrl = "" }: { defaultUrl?: str
   const [libLoading, setLibLoading] = useState(false);
   const [libError, setLibError] = useState<string | null>(null);
 
+  // GitHub connection (repo + classic PAT) — stored locally in the browser.
+  const GH_KEY = "sitelens.github.v1";
+  const [ghRepo, setGhRepo] = useState("");
+  const [ghToken, setGhToken] = useState("");
+  const [ghBaseBranch, setGhBaseBranch] = useState("main");
+  const [ghOpen, setGhOpen] = useState(false);
+  const [ghStatus, setGhStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(GH_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw);
+        if (typeof saved.repo === "string") setGhRepo(saved.repo);
+        if (typeof saved.token === "string") setGhToken(saved.token);
+        if (typeof saved.baseBranch === "string") setGhBaseBranch(saved.baseBranch);
+      }
+    } catch { /* ignore corrupt */ }
+  }, []);
+
+  const saveGitHub = () => {
+    const repo = ghRepo.trim();
+    const token = ghToken.trim();
+    if (!repo || !token) {
+      setGhStatus("Both a repo (owner/name) and a token are required.");
+      return;
+    }
+    try {
+      localStorage.setItem(GH_KEY, JSON.stringify({ repo, token, baseBranch: ghBaseBranch.trim() || "main" }));
+      setGhStatus(`Saved — agent will open fix PRs against ${repo}.`);
+    } catch {
+      setGhStatus("Could not save to browser storage.");
+    }
+  };
+
   const runApply = async () => {
     const target = url.trim();
     if (!target) {
@@ -44,7 +79,16 @@ export default function ApplyFixesButton({ defaultUrl = "" }: { defaultUrl?: str
       const res = await fetch("/api/executive/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: target }),
+        body: JSON.stringify({
+          url: target,
+          github: ghRepo.trim()
+            ? {
+                repo: ghRepo.trim(),
+                token: ghToken.trim(),
+                baseBranch: ghBaseBranch.trim() || "main",
+              }
+            : undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error ?? data?.notes ?? `Apply failed (${res.status})`);
@@ -118,6 +162,52 @@ export default function ApplyFixesButton({ defaultUrl = "" }: { defaultUrl?: str
           Library
         </Button>
       </div>
+
+      <button
+        type="button"
+        onClick={() => setGhOpen((v) => !v)}
+        className="mt-3 inline-flex items-center gap-1.5 text-[12px] font-semibold text-acc hover:underline"
+      >
+        <GitBranch className="h-3.5 w-3.5" />
+        {ghOpen ? "Hide" : "Connect a GitHub repo"} {ghRepo ? `— ${ghRepo}` : ""}
+        <span className="text-faint">{ghOpen ? "▴" : "▾"}</span>
+      </button>
+
+      {ghOpen && (
+        <div className="mt-2.5 grid gap-2.5 rounded-md border border-line2 bg-panel2 p-3.5 sm:grid-cols-[1fr_1fr_110px_auto]">
+          <input
+            value={ghRepo}
+            onChange={(e) => setGhRepo(e.target.value)}
+            placeholder="owner/repo (e.g. Moataz301179/sitelens-app)"
+            className="w-full rounded-md border border-line2 bg-bg px-3 py-2 font-data text-[12.5px] text-ink placeholder:text-faint focus:border-acc/60 focus:outline-none"
+            spellCheck={false}
+          />
+          <input
+            type="password"
+            value={ghToken}
+            onChange={(e) => setGhToken(e.target.value)}
+            placeholder="Classic PAT (ghp_…)"
+            className="w-full rounded-md border border-line2 bg-bg px-3 py-2 font-data text-[12.5px] text-ink placeholder:text-faint focus:border-acc/60 focus:outline-none"
+            spellCheck={false}
+          />
+          <input
+            value={ghBaseBranch}
+            onChange={(e) => setGhBaseBranch(e.target.value)}
+            placeholder="base branch"
+            title="Base branch the fix PRs are opened against"
+            className="w-full rounded-md border border-line2 bg-bg px-3 py-2 font-data text-[12.5px] text-ink placeholder:text-faint focus:border-acc/60 focus:outline-none"
+            spellCheck={false}
+          />
+          <Button onClick={saveGitHub} className="!px-4 !py-2 whitespace-nowrap">
+            <KeyRound className="h-4 w-4" /> Save
+          </Button>
+          {ghStatus && <p className="col-span-full text-[12px] font-semibold text-acc">{ghStatus}</p>}
+          <p className="col-span-full text-[11.5px] text-faint">
+            The token is stored only in this browser (localStorage) and sent to the local API to open fix PRs. It is
+            never committed or logged. Requires repo write access.
+          </p>
+        </div>
+      )}
 
       {error && (
         <div className="mt-3 rounded-md border border-bad/40 bg-bad/10 px-3 py-2 text-[12.5px] font-semibold text-bad">

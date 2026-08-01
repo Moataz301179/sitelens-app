@@ -1,7 +1,9 @@
 import { z } from "zod";
 
 export const envSchema = z.object({
-  DATABASE_URL: z.string().url().startsWith("postgresql://"),
+  // Optional: the app fully supports a no-DB mode (in-memory only).
+  // Every DB-backed call site already falls back gracefully when unset.
+  DATABASE_URL: z.string().url().startsWith("postgresql://").optional(),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(86400),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60000),

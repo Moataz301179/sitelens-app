@@ -43,20 +43,25 @@ export interface ApplyResult {
   reason?: string;
 }
 
-/** Load + validate config from the environment. Returns null when not usable. */
-export function loadGitHubConfig(): GitHubConfig | null {
-  const repo = process.env.GITHUB_REPO;
+/**
+ * Load + validate config. Starts from the environment, then layers per-request
+ * overrides (repo / token / baseBranch) supplied by the user through the
+ * "apply fixes" UI on top. Returns null when not usable (no repo, or no
+ * token/SSH key at all).
+ */
+export function loadGitHubConfig(overrides?: Partial<GitHubConfig>): GitHubConfig | null {
+  const repo = overrides?.repo || process.env.GITHUB_REPO;
   if (!repo) return null;
-  const token = process.env.GITHUB_TOKEN;
-  const sshKey = process.env.GITHUB_SSH_KEY;
+  const token = overrides?.token || process.env.GITHUB_TOKEN;
+  const sshKey = overrides?.sshKey || process.env.GITHUB_SSH_KEY;
   if (!token && !sshKey) return null;
   return {
     repo,
     token,
     sshKey,
-    baseBranch: process.env.GITHUB_BASE_BRANCH || 'main',
-    localPath: process.env.REPO_LOCAL_PATH,
-    branchPrefix: process.env.GITHUB_BRANCH_PREFIX || 'fix/exec-team',
+    baseBranch: overrides?.baseBranch || process.env.GITHUB_BASE_BRANCH || 'main',
+    localPath: overrides?.localPath || process.env.REPO_LOCAL_PATH,
+    branchPrefix: overrides?.branchPrefix || process.env.GITHUB_BRANCH_PREFIX || 'fix/exec-team',
   };
 }
 

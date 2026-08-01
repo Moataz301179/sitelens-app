@@ -1,4 +1,5 @@
 import { complete } from "@/lib/llm";
+import { PROVIDERS } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,10 +24,16 @@ export async function POST(req: Request) {
   if (!provider) return Response.json({ ok: false, error: "Missing provider." }, { status: 400 });
   if (!apiKey) return Response.json({ ok: false, error: "Enter an API key first." }, { status: 400 });
 
+  // Fall back to the provider's first preset when the model field is empty,
+  // so the "test connection" action always has a concrete model to try.
+  const fallbackModel = PROVIDERS.find((p) => p.id === provider)?.models[0] ?? "";
+  const modelToUse = model || fallbackModel;
+  if (!modelToUse) return Response.json({ ok: false, error: "Enter a model name first (e.g. openai/gpt-4o-mini)." }, { status: 400 });
+
   try {
     const reply = await complete({
       provider,
-      model: model || undefined!,
+      model: modelToUse,
       apiKey,
       maxTokens: 8,
       temperature: 0,
@@ -35,7 +42,7 @@ export async function POST(req: Request) {
     if (!reply || reply.trim().length === 0) {
       return Response.json({ ok: false, error: "Provider returned an empty response — check the model name." });
     }
-    return Response.json({ ok: true, provider, model });
+    return Response.json({ ok: true, provider, model: modelToUse });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Connection failed.";
     return Response.json({ ok: false, error: message });

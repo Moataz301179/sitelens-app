@@ -26,9 +26,9 @@ export async function getCache(url: string): Promise<{ stage1: Stage1Payload; re
 
 export async function setCache(url: string, stage1: Stage1Payload, report: Report | null = null): Promise<void> {
   const normalized = normalizeUrl(url);
-  const { CACHE_TTL_SECONDS } = env();
-  const expiresAt = new Date(Date.now() + CACHE_TTL_SECONDS * 1000);
   try {
+    const { CACHE_TTL_SECONDS } = env();
+    const expiresAt = new Date(Date.now() + CACHE_TTL_SECONDS * 1000);
     await db
       .insert(auditCache)
       .values({ normalizedUrl: normalized, stage1Payload: stage1, report, hitCount: 0, expiresAt })

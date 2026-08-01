@@ -39,7 +39,7 @@ export default function KeysModal({ open, onClose }: { open: boolean; onClose: (
       const res = await fetch("/api/providers/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider: active, model: curModel, apiKey }),
+        body: JSON.stringify({ provider: active, model: curModel.trim() || def.models[0], apiKey }),
       });
       const data = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
       if (res.ok && data?.ok) {
@@ -117,19 +117,23 @@ export default function KeysModal({ open, onClose }: { open: boolean; onClose: (
         </button>
       </div>
 
-      {/* Model name field */}
+      {/* Model name field — free text, presets shown as suggestions */}
       <label className="font-data mb-1.5 mt-4 block text-[11px] uppercase tracking-[0.12em] text-faint">Model</label>
-      <select
+      <input
+        list={`model-suggestions-${active}`}
         value={curModel}
         onChange={(e) => setModel(e.target.value)}
-        className="w-full rounded-md border border-line2 bg-bg px-3 py-2.5 text-[13px] font-semibold text-ink focus:border-acc/60 focus:outline-none"
-      >
+        placeholder={`e.g. ${def.models[0]} — or type any model id`}
+        className="w-full rounded-md border border-line2 bg-bg px-3 py-2.5 font-data text-[13px] text-ink placeholder:text-faint focus:border-acc/60 focus:outline-none"
+        spellCheck={false}
+        autoComplete="off"
+      />
+      <datalist id={`model-suggestions-${active}`}>
         {def.models.map((m) => (
-          <option key={m} value={m}>
-            {m}
-          </option>
+          <option key={m} value={m} />
         ))}
-      </select>
+      </datalist>
+      <p className="mt-1.5 text-[11.5px] text-faint">Type any model id — the presets below are just suggestions.</p>
 
       {/* Connection test */}
       <div className="mt-4 flex items-center gap-3">

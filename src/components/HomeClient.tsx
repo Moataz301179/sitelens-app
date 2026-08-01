@@ -4,7 +4,7 @@ import { ArrowRight, ExternalLink, Globe, KeyRound, Radar, Settings2, ShieldChec
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { AGENTS } from "@/lib/agentMeta";
-import { firstAvailableProvider, loadKeys } from "@/lib/keys";
+import { firstAvailableProvider, loadKeys, saveKeys } from "@/lib/keys";
 import { PROVIDERS, type AgentId, type AuditEvent } from "@/lib/types";
 import KeysModal from "./KeysModal";
 import ApplyFixesButton from "./ApplyFixesButton";
@@ -51,14 +51,10 @@ export default function HomeClient({ initialRecent }: { initialRecent: RecentRow
 
   useEffect(() => {
     const def = PROVIDERS.find((p) => p.id === provider);
-    if (!def) return;
-    const saved = keys.model?.[provider];
-    setModel((prev) => {
-      if (saved && def.models.includes(saved)) return saved;
-      if (def.models.includes(prev)) return prev;
-      return def.models[0];
-    });
-  }, [provider, keys]);
+    // Preserve any saved model (including custom ids outside the preset list);
+    // only default to the first preset when nothing has been chosen for this provider yet.
+    setModel(keys.model?.[provider] || def?.models[0] || "");
+  }, [provider, keys.model]);
 
   const refreshRecent = async () => {
     try {
@@ -67,6 +63,13 @@ export default function HomeClient({ initialRecent }: { initialRecent: RecentRow
     } catch {
       /* noop */
     }
+  };
+
+  // Persist the chosen model per provider so custom ids survive reloads and
+  // switching providers never leaks one provider's model into another.
+  const changeModel = (m: string) => {
+    setModel(m);
+    saveKeys({ ...keys, model: { ...keys.model, [provider]: m } });
   };
 
   const startScan = async () => {
@@ -236,17 +239,23 @@ export default function HomeClient({ initialRecent }: { initialRecent: RecentRow
                   })}
                 </div>
                 {activeProvider && provider !== "heuristic" && (
-                  <select
-                    value={model}
-                    onChange={(e) => setModel(e.target.value)}
-                    className="rounded-md border border-line2 bg-bg px-2 py-1 font-data text-[11.5px] text-ink focus:border-acc/60 focus:outline-none"
-                  >
-                    {activeProvider.models.map((m) => (
-                      <option key={m} value={m}>
-                        {m}
-                      </option>
-                    ))}
-                  </select>
+                  <>
+                    <input
+                      list={`model-suggestions-${provider}`}
+                      value={model}
+                      onChange={(e) => changeModel(e.target.value)}
+                      placeholder={activeProvider.models[0]}
+                      title="Model id — presets are suggestions, type any model"
+                      className="w-52 rounded-md border border-line2 bg-bg px-2 py-1 font-data text-[11.5px] text-ink placeholder:text-faint focus:border-acc/60 focus:outline-none"
+                      spellCheck={false}
+                      autoComplete="off"
+                    />
+                    <datalist id={`model-suggestions-${provider}`}>
+                      {activeProvider.models.map((m) => (
+                        <option key={m} value={m} />
+                      ))}
+                    </datalist>
+                  </>
                 )}
               </div>
 

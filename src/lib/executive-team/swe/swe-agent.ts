@@ -37,6 +37,7 @@ import {
   pushViaSSH,
   type ApplyResult,
   type FileChange,
+  type GitHubConfig,
 } from '../integrations/github';
 import { codebaseLedger, type PatternEntry } from '../knowledge/codebase-ledger';
 import * as fs from 'node:fs';
@@ -95,9 +96,15 @@ PRINCIPLES:
   async createActionItems(_analysis: ExecutiveAnalysis): Promise<ActionItem[]> { return []; }
 
   // ── Core: implement an approved decision into a code change ──────────────────
-  async implementDecision(decision: ExecutiveDecision, ctx: ExecutiveContext): Promise<ImplementationResult> {
-    const cfg = loadGitHubConfig();
-    const applyEnabled = process.env.APPLY_ENABLED === 'true';
+  async implementDecision(
+    decision: ExecutiveDecision,
+    ctx: ExecutiveContext,
+    githubOverrides?: Partial<GitHubConfig>,
+  ): Promise<ImplementationResult> {
+    const cfg = loadGitHubConfig(githubOverrides);
+    // A repo + token supplied directly through the "apply fixes" UI is the user's
+    // explicit per-request enablement; the env-only path still needs APPLY_ENABLED.
+    const applyEnabled = githubOverrides?.token ? true : process.env.APPLY_ENABLED === 'true';
     const applyKey = process.env.OPENROUTER_API_KEY || '';
     const domain = ctx.auditResults[0]?.domain ?? 'site';
     const title = `Executive Team: ${decision.decision.slice(0, 80)}`;
@@ -209,7 +216,7 @@ PRINCIPLES:
   }
 
   /** Convenience for a manual "apply fixes for this site" trigger: one PR per site. */
-  async applySite(ctx: ExecutiveContext): Promise<ImplementationResult> {
+  async applySite(ctx: ExecutiveContext, githubOverrides?: Partial<GitHubConfig>): Promise<ImplementationResult> {
     const domain = ctx.auditResults[0]?.domain ?? 'site';
     const potential = ctx.auditResults.reduce((s, a) => s + a.potentialRevenueImpact, 0);
     const decision: ExecutiveDecision = {
@@ -222,7 +229,7 @@ PRINCIPLES:
       alternatives: [],
       approved: true,
     };
-    return this.implementDecision(decision, ctx);
+    return this.implementDecision(decision, ctx, githubOverrides);
   }
 
   // ── Spec builder ────────────────────────────────────────────────────────────
